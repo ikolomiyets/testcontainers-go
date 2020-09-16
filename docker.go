@@ -99,6 +99,16 @@ func (c *DockerContainer) PortEndpoint(ctx context.Context, port nat.Port, proto
 // Warning: this is based on your Docker host setting. Will fail if using an SSH tunnel
 // You can use the "TC_HOST" env variable to set this yourself
 func (c *DockerContainer) Host(ctx context.Context) (string, error) {
+	inspect, err := c.inspectContainer(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if inspect.NetworkSettings.Bridge != "" {
+		fmt.Println("Using bridge as IP address: " + inspect.NetworkSettings.Bridge)
+		return inspect.NetworkSettings.Bridge, nil
+	}
+
 	host, err := c.provider.daemonHost(ctx)
 	if err != nil {
 		return "", err
