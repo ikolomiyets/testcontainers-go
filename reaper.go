@@ -39,7 +39,7 @@ type Reaper struct {
 }
 
 // NewReaper creates a Reaper with a sessionID to identify containers and a provider to use
-func NewReaper(ctx context.Context, sessionID string, provider ReaperProvider, reaperImageName string) (*Reaper, error) {
+func NewReaper(ctx context.Context, sessionID string, provider ReaperProvider, reaperImageName string, reaperNetworkName string) (*Reaper, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	// If reaper already exists re-use it
@@ -68,6 +68,11 @@ func NewReaper(ctx context.Context, sessionID string, provider ReaperProvider, r
 		},
 		AutoRemove: true,
 		WaitingFor: wait.ForListeningPort(listeningPort),
+	}
+
+	// Attache reaper container to a requested network if it is specified
+	if reaperNetworkName != "" {
+		req.Networks = append(req.Networks, reaperNetworkName)
 	}
 
 	c, err := provider.RunContainer(ctx, req)
