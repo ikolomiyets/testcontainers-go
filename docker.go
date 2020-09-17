@@ -104,9 +104,12 @@ func (c *DockerContainer) Host(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	if inspect.NetworkSettings.Bridge != "" {
-		fmt.Println("Using bridge as IP address: " + inspect.NetworkSettings.Bridge)
-		return inspect.NetworkSettings.Bridge, nil
+	dind := os.Getenv("TESTCONTAINERS_DIND")
+	if dind != "" && "TRUE" == strings.ToUpper(dind) {
+		if inspect.NetworkSettings.Gateway != "" {
+			fmt.Println("Using gateway as IP address: " + inspect.NetworkSettings.Gateway)
+			return inspect.NetworkSettings.Gateway, nil
+		}
 	}
 
 	host, err := c.provider.daemonHost(ctx)
@@ -166,6 +169,20 @@ func (c *DockerContainer) Start(ctx context.Context) error {
 		return err
 	}
 
+	for {
+		inspect, err := c.inspectContainer(ctx)
+		if err != nil {
+			return err
+		}
+
+		if !inspect.State.Running {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		} else {
+			break
+		}
+	}
+
 	// if a Wait Strategy has been specified, wait before returning
 	if c.WaitingFor != nil {
 		log.Printf("Waiting for container id %s image: %s", shortID, c.Image)
@@ -194,9 +211,6 @@ func (c *DockerContainer) Terminate(ctx context.Context) error {
 }
 
 func (c *DockerContainer) inspectContainer(ctx context.Context) (*types.ContainerJSON, error) {
-	if c.raw != nil {
-		return c.raw, nil
-	}
 	inspect, err := c.provider.client.ContainerInspect(ctx, c.ID)
 	if err != nil {
 		return nil, err
