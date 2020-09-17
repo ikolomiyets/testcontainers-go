@@ -99,21 +99,22 @@ func (c *DockerContainer) PortEndpoint(ctx context.Context, port nat.Port, proto
 // Warning: this is based on your Docker host setting. Will fail if using an SSH tunnel
 // You can use the "TC_HOST" env variable to set this yourself
 func (c *DockerContainer) Host(ctx context.Context) (string, error) {
-	inspect, err := c.inspectContainer(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	dind := os.Getenv("TESTCONTAINERS_DIND")
-	if dind != "" && "TRUE" == strings.ToUpper(dind) {
-		if inspect.NetworkSettings.Gateway != "" {
-			return inspect.NetworkSettings.Gateway, nil
-		} else {
-			for _, v := range inspect.NetworkSettings.Networks {
-				return v.Gateway, nil
-			}
-		}
-	}
+	//inspect, err := c.inspectContainer(ctx)
+	//if err != nil {
+	//	return "", err
+	//}
+	//
+	//dind := os.Getenv("TESTCONTAINERS_DIND")
+	//if dind != "" && "TRUE" == strings.ToUpper(dind) {
+	//	if inspect.NetworkSettings.Gateway != "" {
+	//		return inspect.NetworkSettings.Gateway, nil
+	//	} else {
+	//		for _, v := range inspect.NetworkSettings.Networks {
+	//			return v.Gateway, nil
+	//		}
+	//	}
+	//}
+	//
 
 	host, err := c.provider.daemonHost(ctx)
 	if err != nil {
@@ -456,8 +457,9 @@ func (n *DockerNetwork) Remove(ctx context.Context) error {
 
 // DockerProvider implements the ContainerProvider interface
 type DockerProvider struct {
-	client    *client.Client
-	hostCache string
+	client         *client.Client
+	hostCache      string
+	defaultNetwork string
 }
 
 var _ ContainerProvider = (*DockerProvider)(nil)
@@ -517,23 +519,23 @@ func (p *DockerProvider) CreateContainer(ctx context.Context, req ContainerReque
 
 	// Make sure that reaper network exists if requested or default reaper network exists when
 	// default bridge network is not available
-	req.ReaperNetwork, err = getReaperNetwork(ctx, p.client, req.ReaperNetwork)
+	p.defaultNetwork, err = getReaperNetwork(ctx, p.client)
 	if err != nil {
 		return nil, err
 	}
 
 	// If reaper network is set (or default) make sure that it is included into container request
-	if req.ReaperNetwork != "" {
+	if p.defaultNetwork != "bridge" {
 		isAttached := false
 		for _, net := range req.Networks {
-			if net == req.ReaperNetwork {
+			if net == p.defaultNetwork {
 				isAttached = true
 				break
 			}
 		}
 
 		if !isAttached {
-			req.Networks = append(req.Networks, req.ReaperNetwork)
+			req.Networks = append(req.Networks, p.defaultNetwork)
 		}
 	}
 
@@ -555,7 +557,7 @@ func (p *DockerProvider) CreateContainer(ctx context.Context, req ContainerReque
 
 	var termSignal chan bool
 	if !req.SkipReaper {
-		r, err := NewReaper(ctx, sessionID.String(), p, req.ReaperImage, req.ReaperNetwork)
+		r, err := NewReaper(ctx, sessionID.String(), p, req.ReaperImage)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating reaper failed")
 		}
@@ -736,6 +738,7 @@ func (p *DockerProvider) daemonHost(ctx context.Context) (string, error) {
 
 	host, exists := os.LookupEnv("TC_HOST")
 	if exists {
+		fmt.Println("TC_HOST is set, using " + p.hostCache)
 		p.hostCache = host
 		return p.hostCache, nil
 	}
@@ -746,21 +749,28 @@ func (p *DockerProvider) daemonHost(ctx context.Context) (string, error) {
 		return "", err
 	}
 
+	fmt.Println("Retrieved daemon host: Scheme " + url.Scheme + "; URL: " + url.Hostname())
 	switch url.Scheme {
 	case "http", "https", "tcp":
+		fmt.Println("Using HTTP host: " + url.Hostname())
 		p.hostCache = url.Hostname()
 	case "unix", "npipe":
 		if inAContainer() {
+			fmt.Println("Tests are running in the container. Trying to determing the gateway IP")
 			ip, err := p.GetGatewayIP(ctx)
 			if err != nil {
+				fmt.Println("Failed to get Gateway IP. Trying to get default gateway IP")
 				// fallback to getDefaultGatewayIP
 				ip, err = getDefaultGatewayIP()
 				if err != nil {
+					fmt.Println("Failed to get default gateway IP. Using localhost")
 					ip = "localhost"
 				}
 			}
+			fmt.Println("Daemon host IP in container " + ip)
 			p.hostCache = ip
 		} else {
+			fmt.Println("Tests are running on the bare OS, using localhost")
 			p.hostCache = "localhost"
 		}
 	default:
@@ -776,7 +786,7 @@ func (p *DockerProvider) CreateNetwork(ctx context.Context, req NetworkRequest) 
 
 	// Make sure that reaper network exists if requested or default reaper network exists when
 	// default bridge network is not available
-	req.ReaperNetwork, err = getReaperNetwork(ctx, p.client, req.ReaperNetwork)
+	p.defaultNetwork, err = getReaperNetwork(ctx, p.client)
 
 	if req.Labels == nil {
 		req.Labels = make(map[string]string)
@@ -795,7 +805,7 @@ func (p *DockerProvider) CreateNetwork(ctx context.Context, req NetworkRequest) 
 
 	var termSignal chan bool
 	if !req.SkipReaper {
-		r, err := NewReaper(ctx, sessionID.String(), p, req.ReaperImage, req.ReaperNetwork)
+		r, err := NewReaper(ctx, sessionID.String(), p, req.ReaperImage)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating network reaper failed")
 		}
@@ -839,7 +849,7 @@ func (p *DockerProvider) GetNetwork(ctx context.Context, req NetworkRequest) (ty
 }
 
 func (p *DockerProvider) GetGatewayIP(ctx context.Context) (string, error) {
-	nw, err := p.GetNetwork(ctx, NetworkRequest{Name: "bridge"})
+	nw, err := p.GetNetwork(ctx, NetworkRequest{Name: p.defaultNetwork})
 	if err != nil {
 		return "", err
 	}
@@ -882,7 +892,7 @@ func getDefaultGatewayIP() (string, error) {
 	return string(ip), nil
 }
 
-func getReaperNetwork(ctx context.Context, cli *client.Client, requestedNetwork string) (string, error) {
+func getReaperNetwork(ctx context.Context, cli *client.Client) (string, error) {
 	// Get list of available networks
 	networkResources, err := cli.NetworkList(ctx, types.NetworkListOptions{})
 	if err != nil {
@@ -890,26 +900,17 @@ func getReaperNetwork(ctx context.Context, cli *client.Client, requestedNetwork 
 	}
 
 	reaperNetwork := "reaper_default"
-	if requestedNetwork != "" {
-		reaperNetwork = requestedNetwork
-	}
 
-	defaultBridgeNetworkExists := false
 	reaperNetworkExists := false
 
 	for _, net := range networkResources {
 		if net.Name == "bridge" {
-			defaultBridgeNetworkExists = true
-			break
+			return "bridge", nil
 		}
 
 		if net.Name == reaperNetwork {
 			reaperNetworkExists = true
 		}
-	}
-
-	if defaultBridgeNetworkExists && requestedNetwork == "" {
-		return "", nil
 	}
 
 	// Create a bridge net all the container communications

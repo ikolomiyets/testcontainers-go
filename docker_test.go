@@ -1352,7 +1352,6 @@ func TestContainerWithReaperNetwork(t *testing.T) {
 			wait.ForListeningPort("80/tcp"),
 			wait.ForLog("Configuration complete; ready for start up"),
 		),
-		ReaperNetwork: "reaper_default",
 	}
 
 	nginxC, err := GenericContainer(ctx, GenericContainerRequest{

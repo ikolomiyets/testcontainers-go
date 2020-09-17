@@ -88,7 +88,6 @@ type ContainerRequest struct {
 	NetworkAliases  map[string][]string // for specifying network aliases
 	SkipReaper      bool                // indicates whether we skip setting up a reaper for this
 	ReaperImage     string              // alternative reaper image
-	ReaperNetwork   string              // alternative reaper network (in case bridge is unavailable)
 	AutoRemove      bool                // if set to true, the container will be removed from the host when stopped
 	NetworkMode     container.NetworkMode
 	AlwaysPullImage bool // Always pull image
