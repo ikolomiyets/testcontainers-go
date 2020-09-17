@@ -117,9 +117,10 @@ func (c *DockerContainer) Host(ctx context.Context) (string, error) {
 			fmt.Println("Using gateway as IP address: " + inspect.NetworkSettings.Gateway)
 			return inspect.NetworkSettings.Gateway, nil
 		} else {
-			networks := make([]string, 0, len(inspect.NetworkSettings.Networks))
-			ip := inspect.NetworkSettings.Networks[networks[0]].Gateway
-			fmt.Println("Using primary network gateway as IP address: " + ip)
+			for _, v := range inspect.NetworkSettings.Networks {
+				fmt.Println("Using primary network gateway as IP address: " + v.Gateway)
+				return v.Gateway, nil
+			}
 		}
 	}
 
