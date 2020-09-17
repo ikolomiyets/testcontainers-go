@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -103,6 +104,12 @@ func (c *DockerContainer) Host(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	writer := new(bytes.Buffer)
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "\t")
+	_ = encoder.Encode(&inspect)
+
+	fmt.Println("inspect: " + writer.String())
 
 	dind := os.Getenv("TESTCONTAINERS_DIND")
 	if dind != "" && "TRUE" == strings.ToUpper(dind) {
