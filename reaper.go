@@ -70,7 +70,7 @@ func NewReaper(ctx context.Context, sessionID string, provider ReaperProvider, r
 		WaitingFor: wait.ForListeningPort(listeningPort),
 	}
 
-	// Attache reaper container to a requested network if it is specified
+	// Attach reaper container to a requested network if it is specified
 	if p, ok := provider.(*DockerProvider); ok {
 		req.Networks = append(req.Networks, p.defaultNetwork)
 	}
