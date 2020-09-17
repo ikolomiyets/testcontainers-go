@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -104,21 +103,13 @@ func (c *DockerContainer) Host(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	writer := new(bytes.Buffer)
-	encoder := json.NewEncoder(writer)
-	encoder.SetIndent("", "\t")
-	_ = encoder.Encode(&inspect)
-
-	fmt.Println("inspect: " + writer.String())
 
 	dind := os.Getenv("TESTCONTAINERS_DIND")
 	if dind != "" && "TRUE" == strings.ToUpper(dind) {
 		if inspect.NetworkSettings.Gateway != "" {
-			fmt.Println("Using gateway as IP address: " + inspect.NetworkSettings.Gateway)
 			return inspect.NetworkSettings.Gateway, nil
 		} else {
 			for _, v := range inspect.NetworkSettings.Networks {
-				fmt.Println("Using primary network gateway as IP address: " + v.Gateway)
 				return v.Gateway, nil
 			}
 		}
