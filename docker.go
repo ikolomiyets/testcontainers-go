@@ -35,6 +35,11 @@ import (
 // Implement interfaces
 var _ Container = (*DockerContainer)(nil)
 
+const (
+	Bridge        = "bridge"         // Bridge network name (as well as driver)
+	ReaperDefault = "reaper_default" // Default network name when bridge is not available
+)
+
 // DockerContainer represents a container started using Docker
 type DockerContainer struct {
 	// Container ID from Docker
@@ -155,20 +160,6 @@ func (c *DockerContainer) Start(ctx context.Context) error {
 	if err := c.provider.client.ContainerStart(ctx, c.ID, types.ContainerStartOptions{}); err != nil {
 		return err
 	}
-
-	//for {
-	//	inspect, err := c.inspectContainer(ctx)
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	if !inspect.State.Running {
-	//		time.Sleep(100 * time.Millisecond)
-	//		continue
-	//	} else {
-	//		break
-	//	}
-	//}
 
 	// if a Wait Strategy has been specified, wait before returning
 	if c.WaitingFor != nil {
@@ -512,7 +503,7 @@ func (p *DockerProvider) CreateContainer(ctx context.Context, req ContainerReque
 
 	// If default network is not bridge make sure it is attached to the request
 	// as container won't be attached to it automatically
-	if p.defaultNetwork != "bridge" {
+	if p.defaultNetwork != Bridge {
 		isAttached := false
 		for _, net := range req.Networks {
 			if net == p.defaultNetwork {
@@ -879,13 +870,13 @@ func getDefaultNetwork(ctx context.Context, cli *client.Client) (string, error) 
 		return "", err
 	}
 
-	reaperNetwork := "reaper_default"
+	reaperNetwork := ReaperDefault
 
 	reaperNetworkExists := false
 
 	for _, net := range networkResources {
-		if net.Name == "bridge" {
-			return "bridge", nil
+		if net.Name == Bridge {
+			return Bridge, nil
 		}
 
 		if net.Name == reaperNetwork {
@@ -896,7 +887,7 @@ func getDefaultNetwork(ctx context.Context, cli *client.Client) (string, error) 
 	// Create a bridge network for the container communications
 	if !reaperNetworkExists {
 		_, err = cli.NetworkCreate(ctx, reaperNetwork, types.NetworkCreate{
-			Driver:     "bridge",
+			Driver:     Bridge,
 			Attachable: true,
 			Labels: map[string]string{
 				TestcontainerLabel: "true",
